@@ -19,15 +19,21 @@ re_server_message = re.compile(
     "\s*(?P<severity>.)[.\>]"
     " (?P<time>.*?)"
     " - (?P<server>.*?)"
-    "(?P<state>\[\d*?\])*?"
+    "(?P<state>_STATE\[-?\d*?\])*?"
     ":\s(?P<message>.*)")
 
-def logfile2dataframe(path):
+def logfile2dataframe(path, ignore_client_lists=True):
     df = pd.DataFrame(server_messages(path))
     if not len(df):
         return df
-    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    df["time"] = pd.to_datetime(df.time, errors="coerce")
+    if ignore_client_lists:
+        df = cut_client_lists(df)
     
+    df["severity"] = df.severity.astype('category')
+    df["server"] = df.server.astype('category')
+
+    df = df.set_index("time")
     return df
 
 
@@ -41,6 +47,9 @@ def server_messages(path):
                 server_message = ServerMessage(**m.groupdict())
                 server_message = server_message._replace(
                     time=last_seen_date + ' ' + server_message.time)
+                if not server_message.state is None:
+                    server_message = server_message._replace(
+                        state=int(server_message.state[7:-1]))
                 server_messages.append(server_message)
             except AttributeError:
                 pass
@@ -52,3 +61,10 @@ def server_messages(path):
 
         return server_messages
 
+def cut_client_lists(df):
+    return df[~df.server.str.contains("CLIENT_LIST")]
+
+def round_time(df, round_to_seconds=1.):
+    round_to_nanoseconds = 1e9 * round_to_seconds
+    df["rounded_time"] = pd.DatetimeIndex((df.index.asi8//round_to_nanoseconds).round() * round_to_nanoseconds)
+    return df
