@@ -1,0 +1,1 @@
+One little function to parse a FACT daily logfile into a pandas DataFrame.
